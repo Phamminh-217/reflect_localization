@@ -403,14 +403,22 @@ Mỗi module mới phải có test.
 
 ## 10. Test bắt buộc cho data association
 
-`test_data_association.py` phải có:
+`test_data_association.py` phải có đầy đủ 14 kịch bản kiểm thử bắt buộc sau:
 
-- Matching đúng với dữ liệu synthetic.
-- Reject duplicate detection id.
-- Reject duplicate landmark id.
-- Reject nếu không đủ candidate.
-- Reject nếu residual cao.
-- Không dùng nearest-neighbor trực tiếp khi không có initial pose.
+1. Reject nếu detections < 3
+2. Reject nếu landmarks < 3
+3. Adaptive tolerance min_abs hoạt động đúng
+4. Adaptive tolerance relative_ratio hoạt động đúng
+5. Adaptive tolerance max_abs hoạt động đúng
+6. Match đúng synthetic transform known
+7. Match đúng khi detection bị shuffle thứ tự
+8. Match đúng khi có thêm detection nhiễu
+9. Reject nếu residual_rmse > max_candidate_rmse
+10. Reject duplicate landmark id
+11. Reject duplicate detection id
+12. Chấp nhận detection_id = 0 và landmark_id = 0
+13. Không dùng nearest-neighbor trực tiếp khi chưa có initial pose
+14. Trả AssociationResult thay vì crash
 
 ---
 
@@ -462,6 +470,9 @@ docs: add phase 2 architecture
 - [ ] Không dùng `list[int]`, `dict[str, Any]`.
 - [ ] Tên biến tọa độ có hậu tố frame.
 - [ ] Không chạy SVD khi `< 3 matches`.
+- [ ] Không dùng fixed distance_tolerance mặc định cho triplet matching.
+- [ ] Bắt buộc dùng adaptive tolerance.
+- [ ] Mọi association candidate phải được verify bằng SVD residual.
 - [ ] Có degeneracy check.
 - [ ] Có residual check.
 - [ ] Không dùng nearest-neighbor trực tiếp nếu chưa có initial pose.

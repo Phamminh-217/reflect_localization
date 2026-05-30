@@ -12,6 +12,12 @@ from rf_threshold.localization.svd_pose import (
     estimate_pose_svd_2d,
     SVDPoseResult,
 )
+from rf_threshold.localization.data_association import (
+    associate_detections_to_map,
+    TripletDescriptor,
+    AssociationCandidate,
+    AssociationResult,
+)
 
 __all__ = [
     "LocalizationResult",
@@ -22,6 +28,11 @@ __all__ = [
     "load_rf_map",
     "estimate_pose_svd_2d",
     "SVDPoseResult",
+    "associate_detections_to_map",
+    "TripletDescriptor",
+    "AssociationCandidate",
+    "AssociationResult",
 ]
+
 
 

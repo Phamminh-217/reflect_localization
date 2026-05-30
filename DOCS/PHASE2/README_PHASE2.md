@@ -338,11 +338,11 @@ residual_rmse
 
 ---
 
-## Phase 2.4 — Data association
+## Phase 2.4 — Triplet Distance-Constrained Data Association
 
 ### Mục tiêu
 
-Tìm cặp tương ứng giữa RF quan sát trong `lidar_frame` và RF trong `map_frame`.
+Tìm cặp tương ứng (correspondence) giữa RF quan sát trong `lidar_frame` và RF landmarks trong `map_frame` để tạo ra `List[MatchedPair]` làm đầu vào cho SVD pose solver.
 
 ### Files
 
@@ -351,23 +351,95 @@ src/rf_threshold/localization/data_association.py
 tests/test_data_association.py
 ```
 
-### Chiến lược bản đầu
+### Tại sao không dùng Brute-Force?
 
-Vì chưa có pose ban đầu ổn định, không dùng nearest-neighbor trực tiếp giữa `lidar_frame` và `map_frame`.
+Nếu dùng brute-force duyệt qua toàn bộ hoán vị kiểu $P(K, M)$ với `M = 5` detections và `K = 20` landmarks:
+$$P(20, 5) = 1.860.480 \text{ candidates}$$
+Số lượng phép thử quá lớn sẽ gây quá tải CPU và không thể đáp ứng tần số chạy thời gian thực (real-time).
 
-Ưu tiên:
+### Tại sao không dùng Nearest-Neighbor trực tiếp?
 
+**NGHIÊM CẤM:** So sánh trực tiếp `center_lidar` với `position_map` bằng khoảng cách Euclidean thông thường khi chưa có Pose dự đoán hoặc Pose ban đầu.
+* Lý do: `center_lidar` nằm trong `lidar_frame`, `position_map` nằm trong `map_frame`. Hai tập điểm đang ở hai hệ tọa độ khác nhau hoàn toàn.
+* Nearest-neighbor chỉ được phép sử dụng làm bước xác thực sau khi đã có Pose ứng viên (Candidate Pose).
+
+### Chiến lược Triplet Distance-Constrained Matching
+
+Sử dụng đặc tính bất biến khoảng cách: Khoảng cách giữa các mốc RF là không đổi dưới phép biến đổi cứng (Rigid Transformation).
+
+#### 1. Ràng buộc sai số thích nghi (Adaptive Pairwise-Distance Tolerance)
+Thay vì sử dụng ngưỡng cố định (ví dụ `0.05m`), ta áp dụng công thức tính sai số thích nghi theo khoảng cách giữa các điểm mốc:
+$$\epsilon(d) = \min(\text{max\_abs}, \max(\text{min\_abs}, \text{relative\_ratio} \times d))$$
+Trong đó:
+* `d`: Khoảng cách thực tế giữa hai landmark trong map.
+* `min_abs`: Ngưỡng sai số tối thiểu (khi điểm mốc ở rất gần).
+* `relative_ratio`: Hệ số tăng dần theo khoảng cách.
+* `max_abs`: Ngưỡng sai số tối đa (khi điểm mốc ở xa).
+
+*Lý do:* Điểm mốc càng ở xa LiDAR thì cụm điểm nhận diện được càng thưa, dẫn đến sai số ước lượng tâm mốc càng lớn. Mốc ở gần có độ chính xác cao hơn nên cần siết ngưỡng chặt hơn.
+
+#### 2. Pipeline thực thi
 ```text
-Triplet / pairwise-distance matching
-hoặc enumerate correspondence với residual nhỏ nhất
+List[RFDetection] + List[RFMapLandmark]
+        ↓
+Generate observed triplets (Tạo bộ ba quan sát)
+        ↓
+Compare with precomputed map triplets (So khớp độ dài cạnh với map)
+        ↓
+Filter candidate triplets using adaptive pairwise-distance tolerance
+        ↓
+Try 3! permutations for each triplet candidate (Thử 6 hoán vị cho mỗi bộ ba)
+        ↓
+Run SVD to create candidate pose (Tính Pose ứng viên)
+        ↓
+Transform all detections to map_frame (Chuyển đổi toàn bộ detections)
+        ↓
+Nearest-neighbor verification (Xác thực số lượng Inliers)
+        ↓
+Score candidates by inlier count + residual RMSE
+        ↓
+Return best AssociationResult
 ```
 
-### Definition of Done
+#### 3. Cấu hình YAML tiêu chuẩn
+```yaml
+data_association:
+  method: "triplet_distance"
 
-- Không match trực tiếp nếu chưa có initial pose.
-- Có thể tạo matched pairs >= 3 khi dữ liệu hợp lệ.
-- Reject matching có residual cao.
-- Unit test pass.
+  min_detections: 3
+  min_matches: 3
+
+  triplet_distance_tolerance:
+    mode: "adaptive"
+    min_abs: 0.08
+    relative_ratio: 0.03
+    max_abs: 0.20
+
+  nearest_neighbor_gate:
+    mode: "adaptive"
+    min_abs: 0.10
+    relative_ratio: 0.03
+    max_abs: 0.25
+
+  max_candidate_rmse: 0.08
+  max_candidate_residual: 0.18
+
+  max_candidates: 300
+  use_detection_score_weight: true
+
+  reject_duplicate_landmarks: true
+  reject_duplicate_detections: true
+```
+
+### Tiêu chí nghiệm thu (Definition of Done)
+
+* Không dùng brute-force $P(K, M)$ mù quáng.
+* Không sử dụng nearest-neighbor trực tiếp khi chưa có Pose dự đoán/pose ban đầu.
+* Sử dụng bộ lọc khoảng cách bộ ba (triplet pairwise-distance constraint) kết hợp với sai số thích nghi (adaptive tolerance).
+* Chạy SVD pose solver để kiểm chứng sai số dư (residual RMSE) của các điểm còn lại.
+* Trả về kết quả khớp tối ưu dựa trên số lượng inliers lớn nhất và RMSE nhỏ nhất.
+* Bộ kiểm thử `tests/test_data_association.py` phải bao phủ đầy đủ 14 test cases bắt buộc và PASS 100%.
+
 
 ---
 

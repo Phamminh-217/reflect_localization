@@ -614,6 +614,90 @@ Unit test với các điểm thẳng hàng hoặc gần trùng nhau.
 
 ---
 
+## #P2-PREDICT-007 — Fixed tolerance quá chặt làm mất correspondence đúng
+
+### Trạng thái
+
+- **Status:** Known Risk
+- **Severity:** High
+- **Module:** `data_association.py`
+
+### Hiện tượng
+
+Hệ thống không tìm ra giải pháp so khớp cho các khung hình (frames) mặc dù số lượng mốc phản quang thực tế $\ge 3$. Robot bị mất dấu định vị.
+
+### Root cause
+
+Sử dụng giá trị sai số khoảng cách cố định (`distance_tolerance` cố định `0.05m`) quá chặt. Thực tế, khi mốc ở xa LiDAR, cụm điểm quét thưa dần dẫn đến sai số ước lượng tâm lớn hơn $5\text{ cm}$.
+
+### Solution
+
+Chuyển đổi sang sử dụng sai số thích nghi (Adaptive Tolerance):
+$$\epsilon(d) = \min(\text{max\_abs}, \max(\text{min\_abs}, \text{relative\_ratio} \times d))$$
+Cho phép nới lỏng sai số khi mốc ở xa và thắt chặt khi mốc ở gần.
+
+### Prevention
+
+Viết unit test kiểm chứng độ chính xác và tính đúng đắn của logic tính toán Adaptive Tolerance theo khoảng cách.
+
+---
+
+## #P2-PREDICT-008 — Triplet candidate quá nhiều do tolerance quá lỏng
+
+### Trạng thái
+
+- **Status:** Known Risk
+- **Severity:** Medium
+- **Module:** `data_association.py`
+
+### Hiện tượng
+
+Thời gian xử lý dữ liệu của một frame tăng đột biến (lag/delay), hệ thống sinh ra quá nhiều ứng viên bộ ba không hợp lệ.
+
+### Root cause
+
+Các tham số cấu hình thích nghi (`min_abs`, `relative_ratio`, hoặc `max_abs`) đặt quá lớn khiến bộ lọc độ dài cạnh bị lỏng lẻo, dẫn đến bùng nổ tổ hợp ứng viên.
+
+### Solution
+
+- Khống chế số lượng ứng viên tối đa duyệt qua bằng tham số `max_candidates: 300`.
+- Sắp xếp và ưu tiên các ứng viên theo điểm số `score` (số lượng inliers nhiều nhất, RMSE nhỏ nhất).
+- Tinh chỉnh lại các tham số thích nghi trong file YAML cấu hình tiêu chuẩn.
+
+### Prevention
+
+Viết unit test xác thực giới hạn `max_candidates` và kiểm tra thuật toán chấm điểm candidate hoạt động đúng để loại bỏ ứng viên kém chất lượng.
+
+---
+
+## #P2-PREDICT-009 — Map có khoảng cách lặp gây nhiều nghiệm tương tự
+
+### Trạng thái
+
+- **Status:** Known Risk
+- **Severity:** High
+- **Module:** `data_association.py`
+
+### Hiện tượng
+
+Pose ước lượng của robot bị nhảy cóc (jump) hoặc xoay ngược hướng $180^\circ$ mặc dù SVD solver vẫn trả về kết quả thành công và sai số RMSE nhỏ.
+
+### Root cause
+
+Hành lang có thiết kế các mốc RF cách đều nhau, dẫn đến nhiều bộ ba landmark khác nhau trên bản đồ có cùng cấu hình khoảng cách (edge signature) tương tự nhau, gây ra hiện tượng nghiệm giả.
+
+### Solution
+
+- Thực hiện bước xác thực mở rộng (Verification stage) bằng cách dùng Pose ứng viên để transform toàn bộ detections còn lại và kiểm tra inliers trên toàn bộ bản đồ.
+- Sử dụng tổng `residual_rmse` và `max_residual` của toàn bộ các điểm inliers để xếp hạng và bác bỏ các nghiệm giả.
+- Ở phiên bản sau, tích hợp thêm thông tin Pose trước đó (Previous Pose Prior) làm vùng tìm kiếm giới hạn.
+
+### Prevention
+
+Viết unit test mô phỏng bản đồ tuần hoàn/lặp lại để kiểm tra xem thuật toán có chọn đúng bộ ba mốc thực tế dựa trên số lượng inliers lớn nhất và RMSE tổng thể nhỏ nhất hay không.
+
+---
+
 ## 6. Checklist debug nhanh Phase 2
 
 - [ ] `detections.json` có tồn tại không?

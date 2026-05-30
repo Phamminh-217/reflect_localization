@@ -195,41 +195,80 @@ List[RFMapLandmark]
 
 ### Trách nhiệm
 
-Tạo cặp tương ứng giữa RF quan sát và RF trong map.
+Thực hiện giải thuật so khớp bộ ba giới hạn khoảng cách (Triplet Distance-Constrained Matching / Pairwise-Distance-Constrained RF Correspondence Search) để tìm các cặp tương ứng hợp lệ giữa các điểm mốc LiDAR quan sát được và bản đồ landmark toàn cục mà không dùng brute-force hay so khớp trực tiếp khi chưa có Pose.
 
-### Input
+### Cấu trúc dữ liệu thiết kế
 
+#### 1. `TripletDescriptor`
+Lưu trữ thông tin mô tả cho một bộ ba điểm (quan sát từ LiDAR hoặc từ bản đồ).
 ```python
-detections: List[RFDetection]
-landmarks: List[RFMapLandmark]
+@dataclass(frozen=True)
+class TripletDescriptor:
+    ids: Tuple[int, int, int]          # IDs của 3 điểm tạo nên triplet (detection IDs hoặc landmark IDs)
+    points_xy: np.ndarray              # Tọa độ 2D của 3 điểm, shape (3, 2)
+    edge_lengths_sorted: np.ndarray    # Chiều dài 3 cạnh được sắp xếp tăng dần, shape (3,)
 ```
 
-### Output
-
+#### 2. `AssociationCandidate`
+Đại diện cho một phương án so khớp ứng viên sau khi chạy thử bộ giải SVD.
 ```python
-List[MatchedPair]
+@dataclass(frozen=True)
+class AssociationCandidate:
+    matched_pairs: List[MatchedPair]   # Danh sách các cặp điểm khớp
+    residual_rmse: float               # Sai số RMSE của phép khớp SVD
+    max_residual: float                # Sai số lớn nhất trong các điểm inliers
+    num_inliers: int                   # Số lượng điểm inliers được giữ lại
+    score: float                       # Điểm số đánh giá ứng viên (để xếp hạng)
 ```
 
-### Chiến lược matching bản đầu
-
-Không dùng nearest-neighbor trực tiếp nếu chưa có initial pose.
-
-Các chiến lược hợp lệ:
-
-```text
-Pairwise-distance matching
-Triplet matching
-Enumerate correspondence + SVD residual selection
-Initial-pose-based nearest neighbor
+#### 3. `AssociationResult`
+Kết quả cuối cùng trả về từ pipeline so khớp.
+```python
+@dataclass(frozen=True)
+class AssociationResult:
+    status: LocalizationStatus         # Trạng thái kết quả (OK, INSUFFICIENT_DETECTIONS, v.v.)
+    matched_pairs: List[MatchedPair]   # Danh sách cặp khớp tốt nhất tìm được
+    residual_rmse: Optional[float]     # RMSE của kết quả khớp tốt nhất
+    num_inliers: int                   # Số lượng inliers
+    reason: str                        # Chi tiết lý do trạng thái (đặc biệt khi lỗi)
+    debug_info: Dict[str, Any]         # Thông tin chẩn đoán
 ```
 
-Nếu chưa có initial pose, ưu tiên:
+> **⚠️ Lưu ý tương thích Python 3.8:**
+> Cấm sử dụng các kiểu gợi ý kiểu dữ liệu (typing) của Python 3.10+ như `MatchedPair | None`, `list[MatchedPair]`, hay `dict[str, Any]`.
+> Bắt buộc phải import và sử dụng: `Optional[MatchedPair]`, `List[MatchedPair]`, `Dict[str, Any]`, `Tuple[int, int, int]`.
 
-```text
-Enumerate candidate correspondences
-→ run SVD
-→ chọn candidate residual nhỏ nhất
+### Hàm tính sai số thích nghi (Adaptive Tolerance Helper)
+Hàm helper tính toán sai số khoảng cách cho phép thích nghi theo độ dài cạnh thực tế:
+```python
+def compute_adaptive_tolerance(
+    distance: float,
+    min_abs: float,
+    relative_ratio: float,
+    max_abs: float,
+) -> float:
+    """Tính toán sai số cho phép động dựa trên khoảng cách."""
+    tolerance = max(min_abs, relative_ratio * distance)
+    tolerance = min(max_abs, tolerance)
+    return tolerance
 ```
+
+### Quy trình và sự tương tác với `svd_pose.py`
+1. Từ danh sách `RFDetection`, tạo ra các `TripletDescriptor` quan sát.
+2. Từ danh sách `RFMapLandmark`, tạo sẵn các `TripletDescriptor` bản đồ toàn cục.
+3. Lọc nhanh các cặp triplet tương ứng bằng cách so sánh độ dài 3 cạnh đã sắp xếp:
+   `abs(obs_edge_i - map_edge_i) <= compute_adaptive_tolerance(map_edge_i, ...)`
+   *(Sử dụng map_edge_i để tính epsilon vì map là giá trị chuẩn hơn detection).*
+4. Đối với mỗi cặp bộ ba ứng viên vượt qua vòng lọc cạnh, thử nghiệm tất cả $3! = 6$ hoán vị thứ tự khớp điểm.
+5. Với mỗi hoán vị, gọi hàm `estimate_pose_svd_2d()` trong `svd_pose.py` để tìm Pose ứng viên.
+6. Dùng Pose ứng viên thu được để transform tất cả `RFDetection` còn lại sang `map_frame`.
+7. Áp dụng Nearest-Neighbor xác thực với ngưỡng thích nghi `nearest_neighbor_gate` để lọc inliers và đếm số lượng điểm khớp chính xác.
+8. Tính toán điểm số `score` cho từng ứng viên theo thứ tự ưu tiên:
+   - Số inliers nhiều nhất (`num_inliers` lớn nhất).
+   - RMSE nhỏ nhất (`residual_rmse` nhỏ nhất).
+   - Sai số cực đại nhỏ nhất (`max_residual` nhỏ nhất).
+9. Trả về `AssociationResult` tối ưu nhất chứa `List[MatchedPair]`.
+
 
 ---
 
