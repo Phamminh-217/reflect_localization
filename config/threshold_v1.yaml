@@ -1,5 +1,5 @@
 bag:
-  path: "data/bags/sample.bag"
+  path: "data/bags/lan4_u_.bag"
   topic: "/livox/lidar"
   message_type: "auto"
 
@@ -13,12 +13,12 @@ preprocessing:
 
   height_filter:
     enabled: true
-    min_z: -0.50
-    max_z: 0.50
+    min_z: 0.01
+    max_z: 0.30
 
 threshold:
   mode: "fixed"
-  fixed_intensity: 180.0
+  fixed_intensity: 140.0
 
 clustering:
   method: "dbscan"
