@@ -19,6 +19,15 @@ from rf_threshold.localization.data_association import (
     AssociationResult,
 )
 from rf_threshold.localization.localizer_pipeline import RFLocalizer
+from rf_threshold.localization.detection_loader import (
+    DetectionFrame,
+    DetectionLoader,
+)
+from rf_threshold.localization.localization_writer import LocalizationWriter
+from rf_threshold.localization.fallback_manager import (
+    FallbackOutput,
+    FallbackManager,
+)
 
 __all__ = [
     "LocalizationResult",
@@ -34,6 +43,11 @@ __all__ = [
     "AssociationCandidate",
     "AssociationResult",
     "RFLocalizer",
+    "DetectionFrame",
+    "DetectionLoader",
+    "LocalizationWriter",
+    "FallbackOutput",
+    "FallbackManager",
 ]
 
 

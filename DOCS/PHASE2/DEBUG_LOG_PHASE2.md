@@ -795,6 +795,58 @@ Bắt buộc sử dụng công cụ trực quan hóa đồ họa (`plot_localiza
 
 ---
 
+## #P2-PREDICT-015 - Trôi Pose robot (drift) do dùng fallback liên tiếp quá dài
+
+### Trạng thái
+
+- **Status:** Known Risk
+- **Severity:** High
+- **Module:** `fallback_manager.py`
+
+### Hiện tượng
+
+Quỹ đạo robot bị đứng im hoặc bị lệch rất xa so với vị trí di chuyển thực tế (trôi vị trí) mặc dù hệ thống vẫn xuất dữ liệu Pose đều đặn và không báo lỗi crash.
+
+### Root cause
+
+Khi robot di chuyển vào vùng mù không phát hiện đủ số mốc RF, thuật toán SVD không thể tính toán pose mới. Nếu `max_consecutive_fallback_frames` đặt quá lớn, `FallbackManager` liên tục dùng lại `last_valid_pose` cũ khiến vị trí robot bị đứng yên trong khi xe thực tế vẫn đang chuyển động.
+
+### Solution
+
+* Khống chế chặt chẽ giới hạn số frame liên tiếp tối đa được phép dùng fallback thông qua cấu hình `max_consecutive_fallback_frames: 5`.
+* Khi vượt quá giới hạn này, buộc phải dừng fallback, chuyển trạng thái lỗi gốc và báo mất dấu định vị.
+
+---
+
+## #P2-PREDICT-016 - Gộp nhầm Pose fallback vào Pose OK làm sai lệch báo cáo chất lượng định vị
+
+### Trạng thái
+
+- **Status:** Known Risk
+- **Severity:** Medium
+- **Module:** `localization_writer.py`
+
+### Hiện tượng
+
+Báo cáo thống kê chất lượng định vị SRE báo cáo tỷ lệ định vị thành công rất cao (ví dụ: 99%), nhưng trên thực tế xe chạy bị trôi pose và va chạm nhiều lần do mất dấu.
+
+### Root cause
+
+`LocalizationWriter` gộp chung cả frame định vị SVD thành công (`OK`) và frame dự phòng (`FALLBACK_LAST_VALID_POSE`) vào cùng một danh mục thành công trong báo cáo summary.
+
+### Solution
+
+Tách biệt hoàn toàn hai chỉ số này trong tệp summary định dạng **Key-Value**:
+```csv
+metric,value
+num_frames,1000
+num_ok,820
+num_fallback,120
+num_rejected_without_fallback,60
+```
+
+---
+
 ## 6. Checklist debug nhanh Phase 2
 
 - [ ] `detections.json` có tồn tại không?
