@@ -13,7 +13,7 @@ preprocessing:
 
   height_filter:
     enabled: true
-    min_z: 0.01
+    min_z: 0.05
     max_z: 0.30
 
 threshold:
