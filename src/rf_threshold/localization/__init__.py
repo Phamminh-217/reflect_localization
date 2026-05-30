@@ -18,6 +18,7 @@ from rf_threshold.localization.data_association import (
     AssociationCandidate,
     AssociationResult,
 )
+from rf_threshold.localization.localizer_pipeline import RFLocalizer
 
 __all__ = [
     "LocalizationResult",
@@ -32,7 +33,9 @@ __all__ = [
     "TripletDescriptor",
     "AssociationCandidate",
     "AssociationResult",
+    "RFLocalizer",
 ]
+
 
 
 
