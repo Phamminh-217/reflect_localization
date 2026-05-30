@@ -698,6 +698,41 @@ Viết unit test mô phỏng bản đồ tuần hoàn/lặp lại để kiểm t
 
 ---
 
+## #P2-PREDICT-010 — Hard reject near-collinear geometry làm mất frame hợp lệ
+
+### Trạng thái
+
+- **Status:** Known Risk
+- **Severity:** High
+- **Module:** `geometry_check.py`, `localizer_pipeline.py`
+
+### Hiện tượng
+
+Hệ thống liên tục từ chối xử lý và trả về mã lỗi `DEGENERATE_GEOMETRY`, làm robot mất dấu định vị liên tục, đặc biệt là trong môi trường hành lang (corridor) mặc dù khâu phát hiện (detection) và so khớp (association) hoàn toàn chính xác.
+
+### Root cause
+
+Khâu kiểm tra hình học (`geometry_check.py`) được thiết lập mặc định từ chối cứng tất cả các trường hợp có chỉ số condition number lớn:
+```text
+condition_number > max_condition_number
+```
+Tuy nhiên, trong hành lang thực tế, các mốc phản quang RF hầu hết được lắp đặt thẳng hàng dọc hai bên tường hành lang. Khi robot quét, các mốc này gần như thẳng hàng, dẫn đến trị riêng thứ hai rất nhỏ $\rightarrow$ chỉ số condition number cực kỳ lớn. Do đó, việc tự động coi đây là lỗi chết và hard reject sẽ loại bỏ hầu hết các frame hợp lệ.
+
+### Solution
+
+Không được phép hard reject near-collinear geometry theo mặc định. Sử dụng cơ chế cảnh báo thích nghi (Warning-only):
+* Đảm bảo cấu hình YAML mặc định là `hard_reject: false`.
+* Khi phát hiện near-collinear nhưng độ phân tán không gian vẫn đủ lớn (`spread >= min_spread`), hệ thống chỉ phát cảnh báo `warning = "NEAR_COLLINEAR"`, đặt `is_valid = True` và tiếp tục luồng chạy giải SVD.
+* Chất lượng Pose cuối cùng sẽ được thẩm định trực quan thông qua sai số dư (residual RMSE check) sau đó.
+
+### Prevention
+
+Bắt buộc có 2 unit tests kiểm chứng:
+1. `test_near_collinear_geometry_returns_warning_not_rejection()`: Kiểm tra các điểm gần thẳng hàng có spread lớn thì chỉ cảnh báo và tiếp tục.
+2. `test_tiny_spread_geometry_is_rejected()`: Kiểm tra các điểm trùng khít nhau (spread cực nhỏ) thì bắt buộc phải hard reject.
+
+---
+
 ## 6. Checklist debug nhanh Phase 2
 
 - [ ] `detections.json` có tồn tại không?

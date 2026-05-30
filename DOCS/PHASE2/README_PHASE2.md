@@ -443,11 +443,11 @@ data_association:
 
 ---
 
-## Phase 2.5 — Localizer pipeline
+## Phase 2.5 — Localizer Pipeline & Geometry Check
 
 ### Mục tiêu
 
-Ghép các module thành pipeline định vị hoàn chỉnh.
+Phase 2.5 tích hợp các module đã hoàn thành gồm RF map loader, data association và SVD pose solver để tạo ra pipeline định vị hoàn chỉnh.
 
 ### Files
 
@@ -459,25 +459,65 @@ tests/test_localizer_pipeline.py
 ### Pipeline
 
 ```text
-RFDetection list
+RFDetection List
   ↓
-Filter detections
+Detection score filtering
   ↓
-Associate with RF map
+Data Association
   ↓
-Check geometry
+Geometry Check
   ↓
-Run SVD
+Final SVD Pose Estimation
   ↓
-Return LocalizationResult
+Residual Validation
+  ↓
+RobotPose / LocalizationResult
 ```
 
-### Definition of Done
+### Nguyên tắc quan trọng về near-collinear geometry
 
-- Frame có đủ RF → trả pose OK.
-- Frame thiếu RF → trả status hợp lệ, không crash.
-- Matching sai → trả status hợp lệ, không crash.
-- Unit test pass.
+Do các mốc RF trong hành lang có thể được bố trí gần thẳng hàng dọc theo hành lang, Phase 2.5 không được mặc định loại bỏ mọi trường hợp có condition number lớn.
+
+Quy tắc mặc định:
+```text
+Near-collinear geometry is a warning, not a hard rejection.
+```
+
+**Các trường hợp phải reject cứng:**
+* `matched_pairs < 3`
+* Có duplicate `detection_id`
+* Có duplicate `landmark_id`
+* `point_lidar` hoặc `point_map` chứa NaN/Inf
+* Spatial spread quá nhỏ (các điểm thực tế gần trùng nhau)
+
+**Các trường hợp chỉ cảnh báo (Warning-only):**
+* Condition number lớn
+* Các điểm khớp gần thẳng hàng nhưng vẫn có spatial spread đủ lớn (`spread >= min_spread`)
+
+*Cơ chế:* Nếu geometry gần thẳng hàng nhưng residual sau SVD nhỏ và thỏa mãn, hệ thống vẫn có thể chấp nhận pose `OK`. Cảnh báo hình học được lưu giữ nhưng không chặn đứng luồng thực thi của robot.
+
+### Cấu hình đề xuất (Config)
+
+```yaml
+geometry_check:
+  min_matches: 3
+  min_spread: 0.30
+
+  condition_number:
+    enabled: true
+    max_condition_number: 50.0
+    hard_reject: false
+```
+
+*Ý nghĩa:* `hard_reject: false` là cấu hình mặc định vì môi trường hành lang có thể tạo ra các tập RF gần thẳng hàng. Nếu sau này RF phân bố 2D tốt hơn hoặc cần kiểm tra nghiêm ngặt hơn, người dùng có thể đặt `hard_reject: true`, nhưng đây không phải là mặc định cho hệ thống hiện tại.
+
+### Tiêu chí nghiệm thu (Definition of Done)
+
+* Tích hợp thành công các module con thành pipeline định vị hoàn chỉnh.
+* Thực hiện đúng kiểm tra hình học dynamic warning cho các trường hợp near-collinear.
+* Không tự ý crash khi gặp lỗi dữ liệu hoặc thiếu điểm, trả về status thích hợp.
+* Bộ unit test `tests/test_localizer_pipeline.py` và `tests/test_geometry_check.py` phải pass 100% với các kịch bản kiểm thử quy định.
+
 
 ---
 

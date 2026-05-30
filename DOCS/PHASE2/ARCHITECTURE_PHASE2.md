@@ -276,34 +276,74 @@ def compute_adaptive_tolerance(
 
 ### Trách nhiệm
 
-Kiểm tra điều kiện hình học trước khi chạy SVD.
+Khảo sát và đánh giá chất lượng phân bố hình học của các cặp điểm đã so khớp (`MatchedPair`) trước khi chạy SVD cuối cùng. 
+* Module này chỉ thực hiện tính toán hình học thuần túy.
+* **NGHIÊM CẤM:** Không được chạy SVD, không được tự ý so khớp (matching), không được đọc file map hay file detections trực tiếp trong module này.
 
-### Input
-
-```python
-matched_pairs: List[MatchedPair]
-```
-
-### Output
+### Cấu trúc dữ liệu thiết kế
 
 ```python
-GeometryCheckResult
+@dataclass(frozen=True)
+class GeometryCheckResult:
+    is_valid: bool                            # Khớp hình học thành công (được tiếp tục chạy SVD hay không)
+    is_degenerate: bool                       # Có bị suy biến hình học (near-collinear hoặc trùng lặp) hay không
+    warning: Optional[str]                    # Chuỗi cảnh báo (ví dụ "NEAR_COLLINEAR")
+    reason: str                               # Lý do chi tiết của trạng thái
+    num_pairs: int                            # Số lượng cặp điểm khảo sát
+    condition_number_lidar: Optional[float]   # Condition number tính trên các điểm LiDAR
+    condition_number_map: Optional[float]     # Condition number tính trên các điểm Map
+    spread_lidar: float                       # Độ phân tán không gian (spatial spread) của LiDAR
+    spread_map: float                         # Độ phân tán không gian (spatial spread) của Map
+    debug_info: Dict[str, Any]                # Thông tin chẩn đoán nâng cao
 ```
 
-### Điều kiện cần kiểm tra
+> **⚠️ Lưu ý tương thích Python 3.8:**
+> Bắt buộc sử dụng các định dạng kiểu dữ liệu chuẩn: `Optional[str]`, `Optional[float]`, `Dict[str, Any]`. Cấm sử dụng các cú pháp dạng `str | None` hay `dict[str, Any]`.
 
+### Hàm chính
+
+```python
+def check_geometry_validity(
+    matched_pairs: List[MatchedPair],
+    cfg: Dict[str, Any],
+) -> GeometryCheckResult:
+    """Đánh giá tính hợp lệ phân bố hình học của các cặp điểm đã khớp."""
+```
+
+### Các trường hợp phải từ chối cứng (Hard Rejection Cases)
+Nếu vi phạm một trong các điều kiện sau, hệ thống trả về `is_valid = False` lập tức:
+* Số lượng điểm khớp không đạt tối thiểu (`len(matched_pairs) < min_matches`).
+* Có hiện tượng trùng lặp mã nhận diện mốc LiDAR (`detection_id` bị lặp).
+* Có hiện tượng trùng lặp mã landmark bản đồ (`landmark_id` bị lặp).
+* Tọa độ các điểm `point_lidar` hoặc `point_map` chứa giá trị không xác định (`NaN` hoặc `Inf`).
+* Độ phân tán không gian quá nhỏ (`spread_lidar < min_spread` hoặc `spread_map < min_spread`), cho thấy các điểm gần như trùng khít lên nhau và không tạo ra hệ khung hình học ổn định.
+
+### Các trường hợp chỉ Cảnh báo (Warning-only Cases)
+Ngược lại với phép từ chối cứng, các trường hợp sau đây **mặc định không được phép reject**:
+* Các điểm nằm gần thẳng hàng (Near-collinear) nhưng độ phân tán không gian vẫn đủ lớn (`spread >= min_spread`).
+* Chỉ số Condition number vượt quá ngưỡng cho phép (`condition_number > max_condition_number`) nhưng tùy chọn `hard_reject` trong cấu hình được đặt là `false`.
+
+Khi đó, hàm sẽ trả về kết quả:
 ```text
-num_pairs >= 3
-spatial spread đủ lớn
-không có duplicate landmark id
-không có duplicate detection id
-points không chứa NaN
-condition number trong ngưỡng cho phép
+is_valid = True
+is_degenerate = True
+warning = "NEAR_COLLINEAR"
+reason = "Near-collinear geometry detected, continuing with warning."
 ```
+Pipeline định vị vẫn tiếp tục chạy phép ước lượng SVD bình thường, và chất lượng của Pose robot cuối cùng sẽ được quyết định thông qua kiểm chứng sai số dư (residual RMSE check) sau đó.
 
-### Lý do cần module này
+### Khi nào mới kích hoạt từ chối cứng cho Condition Number?
+Hệ thống chỉ hard reject các trường hợp gần thẳng hàng khi cấu hình YAML chỉ định rõ ràng:
+```yaml
+geometry_check:
+  condition_number:
+    hard_reject: true
+```
+Khi đó nếu condition number lớn, trả về `is_valid = False` và lý do `"Condition number exceeds threshold."`.
 
-Nếu RF gần như thẳng hàng hoặc quá sát nhau, SVD có thể cho pose nhạy với nhiễu. Vì hành lang có nhiều RF theo dạng gần thẳng hàng, module này là bắt buộc.
+### Lý do thiết kế
+Trong môi trường thực tế như hành lang (corridor), các mốc phản quang RF thường được bố trí thẳng hàng dọc hai bên tường hành lang. Nếu geometry check mặc định loại bỏ toàn bộ các bộ ba gần thẳng hàng, robot sẽ không thể định vị được trong hầu hết thời gian di chuyển. Do đó, hiện tượng near-collinear chỉ được coi là một **cảnh báo hình học**, không phải lỗi chết mặc định.
+
 
 ---
 

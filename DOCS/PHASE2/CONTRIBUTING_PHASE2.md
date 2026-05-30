@@ -258,19 +258,43 @@ enumerate correspondence + residual selection
 
 ---
 
-## 5.3. Bắt buộc kiểm tra suy biến hình học
+## 5.3. Quy tắc bắt buộc cho Geometry Check
 
-Trước SVD phải kiểm tra:
+Không được mặc định reject tất cả các trường hợp near-collinear geometry.
 
-```text
-N >= 3
-không có duplicate ids
-không có NaN
-spatial spread đủ lớn
-condition number hợp lý
+Sai:
+```python
+if condition_number > max_condition_number:
+    return GeometryCheckResult(is_valid=False, ...)
 ```
 
-Nếu không đạt, không chạy SVD.
+Đúng:
+```python
+if condition_number > max_condition_number:
+    if hard_reject:
+        return GeometryCheckResult(
+            is_valid=False,
+            is_degenerate=True,
+            warning="NEAR_COLLINEAR",
+            reason="Condition number exceeds threshold.",
+            # ...
+        )
+    return GeometryCheckResult(
+        is_valid=True,
+        is_degenerate=True,
+        warning="NEAR_COLLINEAR",
+        reason="Near-collinear geometry detected, continuing with warning.",
+        # ...
+    )
+```
+
+Hard reject (`is_valid = False`) chỉ áp dụng bắt buộc cho:
+* Thiếu số lượng match tối thiểu ($< 3$).
+* Duplicate detection/landmark IDs.
+* Tọa độ chứa NaN/Inf.
+* Spatial spread quá nhỏ (nhỏ hơn `min_spread`).
+
+Trường hợp gần thẳng hàng (Near-collinear) với spread đủ lớn phải được coi là **cảnh báo (warning) mặc định**, không được chặn luồng thực thi chạy SVD.
 
 ---
 
@@ -419,6 +443,31 @@ Mỗi module mới phải có test.
 12. Chấp nhận detection_id = 0 và landmark_id = 0
 13. Không dùng nearest-neighbor trực tiếp khi chưa có initial pose
 14. Trả AssociationResult thay vì crash
+
+## 10.1. Test bắt buộc cho geometry check
+
+`test_geometry_check.py` phải có ít nhất hai test riêng biệt:
+1. Points nearly identical / spread too small (spatial spread < min_spread) → `is_valid = False`, `is_degenerate = True` (Từ chối cứng).
+2. Near-collinear but well-spread points (condition_number > max_condition_number) → `is_valid = True`, `is_degenerate = True`, `warning = "NEAR_COLLINEAR"` (Cảnh báo mặc định, không reject).
+
+Không được viết test mặc định mong đợi near-collinear trả về `is_valid = False` trừ khi cấu hình chỉ định `hard_reject: true`.
+
+---
+
+## 10.2. Test bắt buộc cho Phase 2.5 localizer pipeline
+
+`test_localizer_pipeline.py` phải có đầy đủ 11 kịch bản kiểm thử bắt buộc sau:
+1. Success scenario với các cặp matches hợp lệ.
+2. Insufficient detections → Trạng thái `INSUFFICIENT_DETECTIONS`.
+3. Association failure → Trạng thái `ASSOCIATION_FAILED` hoặc mã lỗi tương ứng.
+4. Tiny spatial spread → Trạng thái `DEGENERATE_GEOMETRY` (Hard reject).
+5. Near-collinear but well-spread → Trả về warning `"NEAR_COLLINEAR"`, pipeline vẫn tiếp tục giải Pose.
+6. Near-collinear + good residual → Trạng thái định vị `OK` thành công.
+7. Near-collinear + high residual → Trạng thái lỗi `HIGH_RESIDUAL`.
+8. Trùng lặp mã detection_id → Trạng thái lỗi `DEGENERATE_GEOMETRY` (Hard reject).
+9. Trùng lặp mã landmark_id → Trạng thái lỗi `DEGENERATE_GEOMETRY` (Hard reject).
+10. SVD residual vượt ngưỡng → Trạng thái lỗi `HIGH_RESIDUAL`.
+11. Chấp nhận và giải thành công với điểm số ID 0.
 
 ---
 
