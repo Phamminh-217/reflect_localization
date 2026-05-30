@@ -529,7 +529,44 @@ docs: add phase 2 architecture
 - [ ] Không phá Phase 1.
 - [ ] Không import thresholding trong localization.
 - [ ] Không commit file bag.
-- [ ] Test pass.
+
+---
+
+## 13.5. Quy tắc bắt buộc cho Phase 2.6
+
+### 1. Không viết thuật toán mới trong CLI runner
+Tệp `scripts/run_svd_localization.py` chỉ đóng vai trò điều phối dòng chảy (load đầu vào, gọi `RFLocalizer`, và lưu đầu ra thông qua `LocalizationWriter`). Tuyệt đối không tự triển khai SVD, matching bộ ba hay geometry check trong tệp runner này.
+
+### 2. Mọi pose đều phải có debug evidence đầy đủ
+Nếu một frame định vị thành công (`status == OK`), hệ thống bắt buộc phải ghi lại chi tiết mọi bằng chứng trung gian vào các tệp debug tương ứng (`poses.csv`, `association_debug.csv`, `svd_debug.csv`, `geometry_debug.csv`, `frame_debug.csv`).
+
+### 3. Không che giấu lỗi định vị sai bằng cách bỏ qua frame
+Nghiêm cấm việc bỏ qua âm thầm các frame bị lỗi (skip/continue mà không ghi nhận). Mọi frame không thể tính được pose thành công bắt buộc phải được kết xuất vào `rejected_frames.csv` kèm theo nguyên nhân lỗi chi tiết.
+
+### 4. Sử dụng status cụ thể thay vì lỗi chung chung
+Khi định vị thất bại, bắt buộc phải phân loại và gán mã trạng thái lỗi thích hợp nhất từ `LocalizationStatus` (ví dụ: `INSUFFICIENT_DETECTIONS`, `ASSOCIATION_FAILED`, `DEGENERATE_GEOMETRY`, `HIGH_RESIDUAL`, `MAP_ERROR`), không được lạm dụng trả về `ERROR` chung chung cho mọi kịch bản lỗi.
+
+### 5. Tuân thủ tuyệt đối chiều transform quy ước
+Hệ thống sử dụng quy ước thống nhất:
+$$p_{\text{map}} \approx R \times p_{\text{lidar}} + t$$
+Do đó biến đổi đầu ra của SVD là $T_{\text{map\_lidar}}$. Khi ghi kết quả hoặc debug, phải tuân thủ nghiêm ngặt chiều này để tránh hiện tượng đảo trục hay phản chiếu trajectory robot.
+
+### 6. Không tự ngầm định hệ trục robot
+Robot base và cảm biến LiDAR có thể có các hệ trục tọa độ khác nhau. Tuyệt đối không tự ý giả định `lidar_frame == base_link` trong mã nguồn mà phải xử lý qua tham số extrinsic bù trừ một cách tường minh khi chuyển đổi pose robot sau này.
+
+---
+
+## 13.6. Test bắt buộc cho Phase 2.6 (I/O & Integration)
+
+Tệp `tests/test_localization_writer.py` bắt buộc phải được triển khai và kiểm chứng đầy đủ 7 kịch bản kiểm thử (test cases) sau đây:
+
+1. **Ghi poses.csv thành công**: Kiểm tra xem `LocalizationWriter` có ghi đúng định dạng và dữ liệu pose robot cho các frame thành công hay không.
+2. **Ghi rejected_frames.csv thành công**: Xác thực các frame định vị lỗi được ghi nhận đầy đủ kèm cột nguyên nhân lỗi rõ ràng.
+3. **Ghi association_debug.csv thành công**: Kiểm tra xem tất cả các cặp tương ứng đã so khớp (matched pairs) của frame OK có được xuất chi tiết hay không.
+4. **Ghi svd_debug.csv thành công**: Xác thực tệp chứa đầy đủ các phần tử ma trận xoay $R$, vector tịnh tiến $t$, góc xoay yaw, và sai số residual cho từng cặp điểm.
+5. **Ghi geometry_debug.csv thành công**: Kiểm tra xem độ phân tán không gian (spatial spread) và chỉ số condition number của từng frame có được ghi nhận chính xác.
+6. **Đồng bộ hóa khóa liên kết (traceability)**: Kiểm chứng xem tất cả các tệp debug kết xuất ra có đồng bộ nhất quán về hai trường `frame_index` và `stamp` để hỗ trợ truy vết ngược hay không.
+7. **Khả năng chống crash**: Kiểm thử xem runner CLI (`run_svd_localization.py`) có xử lý trơn tru và không crash khi gặp hỗn hợp frame thành công/thất bại, hoặc thậm chí khi toàn bộ tất cả các frame trong tệp vào đều bị lỗi định vị.
 
 ---
 

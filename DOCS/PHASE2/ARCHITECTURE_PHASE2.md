@@ -449,23 +449,121 @@ Return LocalizationResult
 
 ### Trách nhiệm
 
-Ghi output localization ra file.
+Ghi toàn bộ kết quả localization và mọi bằng chứng debug (debug evidence) ra file một cách đầy đủ và đồng bộ.
 
-### Output
+### Output bắt buộc
 
 ```text
 poses.csv
 poses.json
 rejected_frames.csv
-association_debug.csv
 localization_summary.csv
+association_debug.csv
+svd_debug.csv
+geometry_debug.csv
+frame_debug.csv
 ```
 
 ### Không được làm
 
-- Không tính pose.
-- Không matching.
-- Không sửa result.
+* Không chạy data association hay bất kỳ thuật toán so khớp nào.
+* Không giải SVD hay ước lượng pose.
+* Không thay đổi hoặc sửa đổi nội dung của `LocalizationResult`.
+* Không đọc trực tiếp ROS bag hay tệp detections thô.
+* Không tự ý filter hay biến đổi detections.
+
+---
+
+## 4.8. `run_svd_localization.py` (scripts/)
+
+### Trách nhiệm
+
+CLI runner để thực hiện chạy ước lượng định vị robot offline từ các tệp dữ liệu đã kết xuất của Phase 1.
+
+### Quy trình Pipeline của Runner
+
+1. **Tải dữ liệu đầu vào (Load Inputs)**: Đọc tệp tin kết quả phát hiện `detections.json` từ Phase 1 và bản đồ toàn cục `rf_map_v1.json`.
+2. **Tải cấu hình (Load Config)**: Đọc tệp cấu hình hệ thống `threshold_v1.yaml`.
+3. **Khởi tạo định vị (Initialize RFLocalizer)**: Khởi tạo thực thể `RFLocalizer` với bản đồ và các tham số tương ứng.
+4. **Xử lý tuần tự theo khung hình (Frame-by-Frame Execution)**: Duyệt qua từng khung hình dữ liệu quan sát:
+   * Gọi hàm `localizer.localize()` để thực hiện định vị.
+   * Thu thập toàn bộ các đối tượng kết quả `LocalizationResult`.
+5. **Đồng bộ hóa ghi tệp (Write Outputs)**: Chuyển toàn bộ danh sách kết quả cho `LocalizationWriter` để ghi tất cả các tệp CSV/JSON và tài liệu debug liên quan.
+
+### Không được làm
+
+* Không tự viết lại SVD hay logic giải toán học phẳng.
+* Không tự viết lại thuật toán so khớp bộ ba (data association).
+* Không tự kiểm tra tính suy biến hình học (geometry check) bằng logic riêng.
+* Không được phép gọi hay tích hợp trực tiếp bộ phát hiện phân ngưỡng (threshold detector) của Phase 1.
+* Không đọc trực tiếp ROS bag.
+
+---
+
+## 4.9. `plot_localization_debug.py` (scripts/)
+
+### Trách nhiệm
+
+Script cung cấp công cụ trực quan hóa (visualize) đồ họa tĩnh hoặc động cho một khung hình cụ thể hoặc chuỗi khung hình để hỗ trợ kỹ sư debug nhanh chóng.
+
+### Trực quan hóa bắt buộc (Visualization Elements)
+
+* Hiển thị toàn bộ tọa độ các cột mốc phản xạ RF toàn cục (`RF Map landmarks`) dưới dạng các điểm mốc tĩnh.
+* Vẽ các điểm quan sát được phát hiện (`detections`) sau khi đã áp dụng phép biến đổi không gian (transform) sang hệ tọa độ bản đồ `map_frame`.
+* Vẽ các đường liên kết nối (matched lines) từ tâm mốc quan sát sang mốc bản đồ tương ứng để kiểm tra tính chính xác của thuật toán so khớp.
+* Vẽ vector mũi tên biểu diễn tư thế của robot (Robot pose arrow) bao gồm hướng xoay Yaw và vị trí tịnh tiến $x, y$.
+* Trực quan hóa sai số dư (residual vectors) bằng cách nối điểm đích thực tế với điểm khớp bản đồ.
+* Hiển thị trực quan thông điệp lý do từ chối định vị (`Rejected reason`) nếu khung hình bị lỗi.
+
+### Mục tiêu chẩn đoán nhanh
+
+Giúp các kỹ sư nhanh chóng khoanh vùng và phát hiện các lỗi thực nghiệm:
+* So khớp sai ID cột mốc (nhảy ID).
+* Trục tọa độ $x/y$ bị đảo ngược.
+* Hướng xoay Yaw bị ngược chiều ($180^\circ$).
+* Lệch gốc tọa độ map (map origin) toàn cục.
+* Pose robot bị dịch chuyển lệch cố định do thiếu bù trừ extrinsic giữa LiDAR và robot base.
+
+---
+
+## 4.10. Luồng dữ liệu chi tiết của Phase 2.6 (Data Flow)
+
+```text
+detections.json
+       ↓
+[DetectionFrameLoader]
+       ↓
+List[RFDetection] (per frame)
+       ↓
+[RFLocalizer.localize()]
+       ↓
+LocalizationResult (per frame)
+       ↓
+[LocalizationWriter]
+       ↓
+poses.csv / rejected_frames.csv / debug files
+```
+
+---
+
+## 4.11. Yêu cầu tính truy vết Debug (Debug Traceability)
+
+Quy tắc tối cao của Phase 2.6 là: **"Mỗi robot pose được xuất ra phải truy vết ngược được nguồn gốc bằng chứng hình thành."**
+
+Mỗi bản ghi ghi nhận trong `poses.csv` bắt buộc phải có khả năng liên kết ánh xạ 1-1 với các dòng dữ liệu trong:
+* `frame_debug.csv` (thông số tổng quan khung hình).
+* `association_debug.csv` (vết so khớp landmark).
+* `geometry_debug.csv` (vết khảo sát hình học).
+* `svd_debug.csv` (vết giải ma trận và tính toán residual).
+
+Sử dụng khóa liên kết duy nhất là:
+* `frame_index`
+* `stamp` (thời gian timestamp hệ thống).
+
+Nghiêm cấm tạo ra hay ghi nhận bất kỳ một Pose robot thành công nào mà không có đầy đủ bằng chứng debug đi kèm trong các tệp lưu vết tương ứng.
+
+---
+
 
 ---
 

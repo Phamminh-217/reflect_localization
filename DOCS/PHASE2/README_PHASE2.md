@@ -519,53 +519,106 @@ geometry_check:
 * Bộ unit test `tests/test_localizer_pipeline.py` và `tests/test_geometry_check.py` phải pass 100% với các kịch bản kiểm thử quy định.
 
 
----
-
-## Phase 2.6 — Output writer and evaluation
+## Phase 2.6 — Localization I/O, CLI Runner & Debuggable End-to-End Integration
 
 ### Mục tiêu
 
-Xuất pose và log localization.
+Phase 2.6 tích hợp toàn bộ localization backend đã hoàn thành để chạy trên output thật của Phase 1.
 
-### Files
+**Input:**
+```text
+data/results/<run_name>/detections.json
+data/maps/rf_map_v1.json
+```
+
+**Output:**
+```text
+data/results/<run_name>/localization/
+├── poses.csv
+├── poses.json
+├── rejected_frames.csv
+├── localization_summary.csv
+├── association_debug.csv
+├── svd_debug.csv
+├── geometry_debug.csv
+└── frame_debug.csv
+```
+
+### Nguyên tắc quan trọng
+
+Quy tắc trung tâm của Phase 2.6:
+```text
+Không chỉ xuất pose. Phải xuất được bằng chứng hình thành pose.
+```
+Nghĩa là mỗi pose phải truy vết ngược được nguồn gốc hình thành của nó:
+```text
+pose ← final SVD result ← matched pairs ← association result ← detections ← RF map
+```
+Nếu robot định vị sai hoặc bị mất dấu, người dùng phải biết chính xác lỗi ở bước nào (do phát hiện thiếu, so khớp nhảy ID hay do suy biến hình học), không phải đoán mò.
+
+### Pipeline Phase 2.6
+
+```text
+detections.json
+  ↓
+Detection result loader
+  ↓
+RFLocalizer.localize() per frame
+  ↓
+Pose / rejected status
+  ↓
+Localization writer
+  ↓
+CSV / JSON / debug files
+```
+
+### Files cần triển khai
 
 ```text
 src/rf_threshold/localization/localization_writer.py
 scripts/run_svd_localization.py
-scripts/evaluate_localization.py
+scripts/plot_localization_debug.py
+tests/test_localization_writer.py
 ```
 
-### Output
-
-```text
-poses.csv
-poses.json
-localization_summary.csv
-rejected_frames.csv
-association_debug.csv
-```
-
-### Definition of Done
-
-- Chạy được từ detections.json.
-- Xuất được pose cho frame hợp lệ.
-- Xuất được rejected reason cho frame không hợp lệ.
-- Không crash khi nhiều frame thiếu RF.
-
----
-
-## 9. Lệnh chạy dự kiến
-
-Sau khi Phase 2 hoàn thành:
+### Lệnh chạy dự kiến
 
 ```bash
-python3 scripts/run_svd_localization.py \
+PYTHONPATH=src python3 scripts/run_svd_localization.py \
   --detections data/results/sample_run/detections.json \
   --map data/maps/rf_map_v1.json \
+  --config config/threshold_v1.yaml \
   --output data/results/sample_run/localization
 ```
 
+### Tiêu chí nghiệm thu (Definition of Done)
+
+Phase 2.6 chỉ được nghiệm thu khi thỏa mãn cả 12 tiêu chí sau:
+1. Đọc được `detections.json` từ Phase 1.
+2. Đọc được bản đồ landmarks RF từ JSON.
+3. Chạy `RFLocalizer` theo từng frame tuần tự.
+4. Xuất được `poses.csv` và `poses.json` cho các frame thành công.
+5. Xuất được `rejected_frames.csv` cho các frame thất bại.
+6. Xuất được `association_debug.csv` (lưu vết chi tiết matched pairs).
+7. Xuất được `svd_debug.csv` (lưu vết $R, t, \text{yaw}$ và residuals).
+8. Xuất được `geometry_debug.csv` (lưu vết spread và condition number).
+9. Xuất được `localization_summary.csv` thống kê kết quả tổng thể.
+10. Có khả năng chọn bất kỳ một frame nào và truy ngược toàn bộ nguồn gốc pose của nó: `detections` $\rightarrow$ `matched pairs` $\rightarrow$ `SVD result` $\rightarrow$ `final pose`.
+11. Có visualization kiểm tra và trực quan hóa ít nhất một frame OK và một frame fail.
+12. Không crash khi gặp nhiều frame định vị lỗi liên tiếp.
+
+### Cảnh báo thực nghiệm
+
+Unit test của các module con (Phase 2.1–2.5) pass không đồng nghĩa với việc pose thực nghiệm trên xe thật sẽ đúng. Phase 2.6 phải được thiết kế để dễ dàng debug các lỗi vật lý phức tạp như:
+* SVD đúng nhưng pose robot bị sai lệch cố định.
+* So khớp đúng trong test nhưng nhảy ID trên bản đồ thật.
+* Bản đồ RF map bị lệch tọa độ gốc (origin) hoặc bị đảo trục $x/y$.
+* Hướng xoay Yaw bị ngược ($180^\circ$).
+* Biến đổi $T_{\text{map\_lidar}}$ bị hiểu nhầm thành chiều ngược lại $T_{\text{lidar\_map}}$.
+* Thiếu bù trừ hệ trục tọa độ extrinsic $T_{\text{base\_link\_lidar}}$ khiến pose LiDAR lệch so với tâm robot.
+
 ---
+
 
 ## 10. Tiêu chí nghiệm thu Phase 2
 
