@@ -183,30 +183,35 @@ def _plot_trajectory(
     ):
         color = "#F5A623" if is_fb else "#27AE60"
         marker = "s" if is_fb else "o"
-        ax.plot(x, y, marker=marker, color=color, markersize=7, zorder=3)
-        # Yaw direction arrow
-        dx = arrow_len * np.cos(yaw)
-        dy = arrow_len * np.sin(yaw)
-        ax.annotate(
-            "",
-            xy=(x + dx, y + dy),
-            xytext=(x, y),
-            arrowprops=dict(arrowstyle="->", color=color, lw=1.5),
-            zorder=4,
-        )
-        # Frame index label
-        ax.annotate(
-            str(fi),
-            xy=(x, y),
-            xytext=(4, 4),
-            textcoords="offset points",
-            fontsize=7,
-            color="#333333",
-        )
+        
+        # Plot markers, arrows, and labels at a stride of 20 to keep it thin and clean,
+        # but always plot fallback frames, first frame, and last frame.
+        if is_fb or (i % 20 == 0) or (i == 0) or (i == len(xs) - 1):
+            ax.plot(x, y, marker=marker, color=color, markersize=4, zorder=3)
+            # Yaw direction arrow
+            dx = arrow_len * np.cos(yaw)
+            dy = arrow_len * np.sin(yaw)
+            ax.annotate(
+                "",
+                xy=(x + dx, y + dy),
+                xytext=(x, y),
+                arrowprops=dict(arrowstyle="->", color=color, lw=1.0),
+                zorder=4,
+            )
+            # Frame index label
+            ax.annotate(
+                str(fi),
+                xy=(x, y),
+                xytext=(3, 3),
+                textcoords="offset points",
+                fontsize=6,
+                color="#555555",
+                alpha=0.8,
+            )
 
     # Draw trajectory line
     if len(xs) >= 2:
-        ax.plot(xs, ys, "-", color="#AAAAAA", linewidth=1.0, zorder=1)
+        ax.plot(xs, ys, "-", color="#3498DB", linewidth=0.8, zorder=2)
 
     # Legend
     from matplotlib.lines import Line2D

@@ -1,0 +1,92 @@
+# threshold_field_v1.yaml — Config optimized for real-world field bags
+
+bag:
+  path: "data/bags/lan4_u_.bag"
+  topic: "/livox/lidar"
+  message_type: "auto"
+
+preprocessing:
+  remove_nan: true
+
+  range_filter:
+    enabled: true
+    min_range: 0.20
+    max_range: 8.00
+
+  height_filter:
+    enabled: true
+    min_z: 0.05
+    max_z: 0.30
+
+# Mode "fixed" or "adaptive"
+threshold:
+  mode: "fixed"
+  fixed_intensity: 140.0
+
+clustering:
+  method: "dbscan"
+  use_dimension: "xy"
+  eps: 0.08
+  min_samples: 3
+
+cluster_validation:
+  min_points: 3
+  max_points: 200
+  max_extent_x: 0.30
+  max_extent_y: 0.30
+  max_extent_z: 0.50
+  min_mean_intensity: 120.0
+
+center_estimation:
+  method: "intensity_weighted"
+  intensity_weight_power: 1.0
+  clamp_percentile: 95.0
+
+output:
+  output_dir: "data/results/sample_run"
+  save_json: true
+  save_csv: true
+  save_debug_image: true
+
+debug:
+  enabled: true
+  print_every_n_frames: 1
+
+data_association:
+  method: "triplet_distance"
+  min_detections: 3
+  min_matches: 3
+
+  triplet_distance_tolerance:
+    mode: "adaptive"
+    min_abs: 0.08
+    relative_ratio: 0.04
+    max_abs: 0.30
+
+  nearest_neighbor_gate:
+    mode: "adaptive"
+    min_abs: 0.10
+    relative_ratio: 0.03
+    max_abs: 0.25
+
+  max_candidate_rmse: 0.10      # Relaxed from 0.08 for real noise
+  max_candidate_residual: 0.25  # Relaxed from 0.18 for real noise
+
+  max_candidates: 300
+  use_detection_score_weight: true
+
+  reject_duplicate_landmarks: true
+  reject_duplicate_detections: true
+
+fallback:
+  enabled: true
+  mode: "last_valid_pose"
+  max_consecutive_fallback_frames: 5
+
+geometry_check:
+  min_matches: 3
+  min_spread: 0.20
+  condition_number:
+    enabled: true
+    max_condition_number: 80.0
+    hard_reject: false          # Do not hard-reject near-collinear setups in real hallways

@@ -55,8 +55,20 @@ def parse_args() -> argparse.Namespace:
         "-o",
         "--output",
         type=str,
-        required=True,
+        required=False,
         help="Output directory where poses and debug CSV/JSON files are saved.",
+    )
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        required=False,
+        help="Run name to automatically determine output directory: data/results/<run_name>/localization/",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print verbose output per frame during processing.",
     )
     return parser.parse_args()
 
@@ -69,10 +81,21 @@ def main() -> int:
     """
     args = parse_args()
 
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+
     det_path = Path(args.detections)
     map_path = Path(args.map)
     cfg_path = Path(args.config)
-    out_dir = Path(args.output)
+    
+    if args.run_name:
+        out_dir = Path("data/results") / args.run_name / "localization"
+    elif args.output:
+        out_dir = Path(args.output)
+    else:
+        logger.error("Either --output or --run-name must be specified.")
+        return 1
 
     # 1. Input existence validation
     if not det_path.exists():
@@ -129,6 +152,16 @@ def main() -> int:
             res = localizer.localize(frame.detections, frame.stamp)
             # Apply Fallback continuity manager
             out = fallback_mgr.handle_result(frame.frame_index, frame.stamp, res)
+
+            if args.verbose:
+                logger.debug(
+                    "Frame %d (stamp %s): Detections=%d, Status=%s, FallbackStatus=%s",
+                    frame.frame_index,
+                    frame.stamp,
+                    len(frame.detections),
+                    res.status.name,
+                    out.status.name,
+                )
 
             results.append(res)
             fallback_outputs.append(out)

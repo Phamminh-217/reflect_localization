@@ -28,6 +28,11 @@ from rf_threshold.localization.fallback_manager import (
     FallbackOutput,
     FallbackManager,
 )
+from rf_threshold.localization.pose_evaluator import (
+    PoseEvalMetrics,
+    evaluate_poses_from_csv,
+    evaluate_poses_from_results,
+)
 
 __all__ = [
     "LocalizationResult",
@@ -48,6 +53,9 @@ __all__ = [
     "LocalizationWriter",
     "FallbackOutput",
     "FallbackManager",
+    "PoseEvalMetrics",
+    "evaluate_poses_from_csv",
+    "evaluate_poses_from_results",
 ]
 
 
