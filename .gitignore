@@ -29,6 +29,7 @@ log/
 data/bags/
 data/results/
 debug_images/
+DOCS/
 
 # IDE
 .vscode/

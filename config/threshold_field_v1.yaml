@@ -1,3 +1,5 @@
+# threshold_field_v1.yaml — Config optimized for real-world field bags
+
 bag:
   path: "data/bags/lan4_u_.bag"
   topic: "/livox/lidar"
@@ -16,6 +18,7 @@ preprocessing:
     min_z: 0.05
     max_z: 0.30
 
+# Mode "fixed" or "adaptive"
 threshold:
   mode: "fixed"
   fixed_intensity: 140.0
@@ -51,15 +54,14 @@ debug:
 
 data_association:
   method: "triplet_distance"
-
   min_detections: 3
   min_matches: 3
 
   triplet_distance_tolerance:
     mode: "adaptive"
     min_abs: 0.08
-    relative_ratio: 0.03
-    max_abs: 0.20
+    relative_ratio: 0.04
+    max_abs: 0.30
 
   nearest_neighbor_gate:
     mode: "adaptive"
@@ -67,8 +69,8 @@ data_association:
     relative_ratio: 0.03
     max_abs: 0.25
 
-  max_candidate_rmse: 0.08
-  max_candidate_residual: 0.18
+  max_candidate_rmse: 0.10      # Relaxed from 0.08 for real noise
+  max_candidate_residual: 0.25  # Relaxed from 0.18 for real noise
 
   max_candidates: 300
   use_detection_score_weight: true
@@ -76,3 +78,15 @@ data_association:
   reject_duplicate_landmarks: true
   reject_duplicate_detections: true
 
+fallback:
+  enabled: true
+  mode: "last_valid_pose"
+  max_consecutive_fallback_frames: 5
+
+geometry_check:
+  min_matches: 3
+  min_spread: 0.20
+  condition_number:
+    enabled: true
+    max_condition_number: 80.0
+    hard_reject: false          # Do not hard-reject near-collinear setups in real hallways
