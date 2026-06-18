@@ -1,15 +1,15 @@
-# RF Threshold Localization Pipeline
+# Báo Cáo Tổng Hợp Toàn Diện Hệ Thống Định Vị RF-SVD
 
-# Bản Tiếng Việt
+Tài liệu kỹ thuật cấp cao này cung cấp cái nhìn toàn diện về kiến trúc nền tảng, thiết kế luồng xử lý (pipeline), đường đi dữ liệu (data flow), sơ đồ cấu trúc mã nguồn, và hướng dẫn vận hành của dự án định vị dựa trên mốc phản quang (Reflective Feature - RF) sử dụng thuật toán SVD 2D.
 
-Tài liệu kỹ thuật và hướng dẫn vận hành cho hệ thống định vị dựa trên mốc phản quang (Reflective Feature - RF) sử dụng ngưỡng cường độ (intensity thresholding) và thuật toán so khớp bộ ba (Triplet Matching) kết hợp giải Singular Value Decomposition (SVD) 2D.
+---
 
 ## 1. TOÀN BỘ KIẾN THỨC NỀN TẢNG (Knowledge Base)
 
 ### 1.1. Mục Tiêu Cốt Lõi của Dự Án
-Dự án phát triển hệ thống định vị thời gian thực, độ chính xác cao cho robot di động trong môi trường nhà kho hoặc hành lang có lắp đặt mốc phản quang hình trụ:
-- **Phát hiện cột mốc phản quang (Phase 1):** Lọc đám mây điểm LiDAR thô, loại nhiễu, phân cụm DBSCAN và tính toán tọa độ tâm mốc trong hệ tọa độ LiDAR (`lidar_frame`).
-- **Giải tư thế định vị robot (Phase 2):** So khớp mốc quan sát được với bản đồ cột mốc toàn cục và tính toán vị trí góc quay 2D $[x, y, \text{yaw}]$ của robot với độ chính xác dưới mức centimét.
+Dự án nhằm phát triển một hệ thống định vị chính xác cao, thời gian thực và độc lập dành cho robot di động hoạt động trong các môi trường khép kín (hành lang, nhà kho) có lắp đặt các cột mốc phản quang vật lý. Hệ thống giải quyết hai bài toán chính:
+- **Phát hiện cột mốc phản quang (Phase 1):** Tự động phát hiện vị trí tâm và cường độ của cột phản quang từ dữ liệu thô LiDAR Point Cloud mà không phụ thuộc vào dữ liệu camera.
+- **Giải tư thế định vị robot (Phase 2):** So khớp tương quan các mốc quan sát được với bản đồ cột mốc toàn cục và tính toán vị trí góc quay 2D $[x, y, \text{yaw}]$ của robot với độ chính xác dưới mức centimét.
 
 ### 1.2. Lý Thuyết Toán Học & Thuật Toán Cốt Lõi
 Hệ thống kết hợp các phương pháp hình học và đại số tuyến tính nâng cao:
@@ -21,7 +21,7 @@ Hệ thống kết hợp các phương pháp hình học và đại số tuyến
 | **Triplet Distance Metric** | `data_association.py` | Mã hóa hình học nhóm 3 điểm bằng chiều dài 3 cạnh tam giác sắp xếp tăng dần. So khớp độc lập hệ trục tọa độ mà không cần tư thế khởi tạo. |
 | **Adaptive Distance Tolerance** | `data_association.py` | Sai số khoảng cách thích nghi $\epsilon(d)$ nới lỏng khi mốc ở xa (điểm quét thưa) và thắt chặt khi mốc ở gần. |
 | **Singular Value Decomposition (SVD) 2D** | `svd_pose.py` | Giải trực tiếp ma trận xoay $R$ và vector tịnh tiến $t$ giảm thiểu bình phương sai số Euclidean giữa hai tập điểm 2D. |
-| **Geometric Spread Check** | `geometry_check.py` | Đánh giá độ phân tán không gian và kiểm tra độ suy biến hình học (near-collinear) thông qua chỉ số condition number. |
+| **Geometric Spread Check & Condition Number** | `geometry_check.py` | Đánh giá độ phân tán không gian và kiểm tra độ suy biến hình học (near-collinear) thông qua tỷ số trị riêng lớn nhất / nhỏ nhất. |
 
 ---
 
@@ -102,7 +102,14 @@ Hệ thống kết xuất đồng bộ **8 tệp evidence debug** phục vụ ki
 │   │   └── lan4.bag                   # Tệp ROS bag thô thực tế
 │   └── maps/
 │       └── your_map_simple.json       # Bản đồ 18 landmark đo đạc thực tế
-tổng quan Phase 2
+├── DOCS/
+│   ├── PHASE1/                        # Tài liệu đặc tả Phase 1
+│   └── PHASE2/
+│       ├── ARCHITECTURE_PHASE2.md     # Tài liệu thiết kế kiến trúc Phase 2
+│       ├── CONTRIBUTING_PHASE2.md     # Quy tắc coding và phát triển Phase 2
+│       ├── DEBUG_LOG_PHASE2.md        # Physical Diagnostic Checklist chẩn đoán lỗi
+│       ├── FIELD_VALIDATION_LOG.md    # Nhật ký kết quả các lần chạy thực nghiệm
+│       └── README_PHASE2.md           # Hướng dẫn tổng quan Phase 2
 ├── scripts/
 │   ├── generate_validation_report.py  # Script tạo báo cáo chẩn đoán & vẽ đồ thị
 │   ├── plot_localization_debug.py     # Script visualization các file kết quả
@@ -197,23 +204,3 @@ Mở tệp chẩn đoán tự động được lưu tại:
 1. **Ngưỡng lọc cao độ (`height_filter`):** Mốc phản quang thường được đặt ở một dải cao độ xác định so với cảm biến LiDAR (mặc định trong config thực địa: `min_z: 0.05`, `max_z: 0.30`). Nếu mốc được lắp cao hơn hoặc thấp hơn, phải thay đổi dải này để tránh bị lọc bỏ mất mốc.
 2. **Ngưỡng cường độ phản xạ (`fixed_intensity`):** Quyết định việc lọc điểm phản quang thô (mặc định: `fixed_intensity: 140.0`). Nếu môi trường nhiều bụi hoặc mốc cũ mờ, có thể giảm xuống `120.0` để thu nhận nhiều điểm hơn.
 3. **Cơ chế fallback (`fallback`):** Đảm bảo đặt `max_consecutive_fallback_frames: 5` để giới hạn trôi tích lũy khi robot đi vào vùng mù mất dấu.
-
----
-
-## 6. Chẩn Đoán Lỗi Vật Lý (Physical Diagnostic Checklist)
-
-Nếu quỹ đạo robot bị lệch hoặc sai khi chạy trên dữ liệu bag thật:
-1. **Kiểm tra tỷ lệ detection:** Đọc `frame_debug.csv`, đảm bảo số lượng detection mỗi frame $\ge 3$. Nếu quá ít, giảm ngưỡng cường độ phản xạ `fixed_intensity` trong config.
-2. **Kiểm tra độ chính xác của bản đồ:** Đọc `validation_report.md`. Nếu sai số RMSE dư $> 0.08\text{ m}$, khả năng cao tọa độ landmark trong `rf_map_v1.json` bị lệch vật lý so với thực tế.
-3. **Kiểm tra chiều quay (Yaw):** Đọc `poses.csv` và quỹ đạo `01_trajectory.png`. Nếu quỹ đạo bị lộn ngược hoặc yaw quay lệch hướng, kiểm tra chiều biến đổi $T_{\text{map\_lidar}}$.
-
----
-
-## 7. Chạy Kiểm Thử (Testing)
-
-Khởi chạy toàn bộ suite kiểm thử (hơn 150 tests) để xác thực tính đúng đắn của code:
-
-```bash
-python3 -m pytest -v
-```
-
