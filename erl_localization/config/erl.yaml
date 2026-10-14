@@ -1,0 +1,4 @@
+# ERL-0011 single configuration owner.
+# EU-ERL-01 intentionally defines no numerical, calibration, timing,
+# detector, clustering, fitting, identity, or baseline values.
+# Those values remain OPEN until their later execution units produce evidence.
