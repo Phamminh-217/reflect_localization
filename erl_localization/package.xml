@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>erl_localization</name>
+  <version>0.0.0</version>
+  <description>ERL-0011 package/runtime skeleton for External Reflector Localization.</description>
+  <maintainer email="minhgokupham2341@gmail.com">pham1nh</maintainer>
+  <license>UNLICENSED</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>roscpp</depend>
+
+  <export/>
+</package>
